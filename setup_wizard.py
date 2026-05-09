@@ -70,8 +70,38 @@ def show_menu() -> None:
     print()
     print("    1)  Choose from existing Event Hubs in my subscriptions")
     print("    2)  Discover firewall, deploy Event Hub + configure diagnostics  (~2–3 min)")
+    print("    3)  Paste a connection string directly")
     print("    q)  Quit")
     print()
+
+
+# ── 3c. Paste connection string directly ─────────────────────────────────────
+def paste_connection_string(env_file: Path) -> bool:
+    print()
+    print(f"  {bold('Paste your Event Hub connection string')}")
+    print(f"  {_c('36', 'Expected format:')}")
+    print(f"  {_c('2', '  Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=<rule>;SharedAccessKey=<key>;EntityPath=<hub>')}")
+    print()
+
+    while True:
+        raw = input("  Connection string (or q to go back): ").strip()
+        if raw.lower() == "q":
+            return False
+        if not raw:
+            warn("Connection string must not be empty.")
+            continue
+        if not raw.startswith("Endpoint=sb://"):
+            warn("Does not look like an Event Hub connection string (must start with 'Endpoint=sb://')")
+            retry = input("  Use it anyway? [y/N]: ").strip().lower()
+            if retry != "y":
+                continue
+        if "EntityPath=" not in raw:
+            warn("Connection string does not contain 'EntityPath=' — make sure it targets a specific Event Hub, not just the namespace.")
+            retry = input("  Use it anyway? [y/N]: ").strip().lower()
+            if retry != "y":
+                continue
+        write_env(env_file, raw)
+        return True
 
 
 # ── Azure CLI checks ───────────────────────────────────────────────────────────
@@ -549,25 +579,37 @@ def run_wizard(base_dir: Path, reconfigure: bool = False) -> None:
         return
 
     print_header()
-    check_az_cli()
-    check_login()
+
+    _az_checked = False
+
+    def _ensure_az() -> None:
+        nonlocal _az_checked
+        if not _az_checked:
+            check_az_cli()
+            check_login()
+            _az_checked = True
 
     while True:
         print()
         show_menu()
-        choice = input("  Choice [1/2/q]: ").strip().lower()
+        choice = input("  Choice [1/2/3/q]: ").strip().lower()
         print()
         if choice == "1":
+            _ensure_az()
             if pick_existing_eventhub(env_file):
                 break
         elif choice == "2":
+            _ensure_az()
             if deploy_new_eventhub(env_file):
+                break
+        elif choice == "3":
+            if paste_connection_string(env_file):
                 break
         elif choice == "q":
             print("  Bye.")
             sys.exit(0)
         else:
-            warn("Please enter 1, 2, or q.")
+            warn("Please enter 1, 2, 3, or q.")
 
     print()
     ok("Setup complete — launching the TUI…")
