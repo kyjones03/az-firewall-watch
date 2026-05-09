@@ -16,13 +16,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: az-firewall-watch-linux
-            binary: az-firewall-watch
           - os: macos-latest # Apple Silicon / arm64
             artifact: az-firewall-watch-macos
-            binary: az-firewall-watch
           - os: windows-latest
-            artifact: az-firewall-watch-windows
-            binary: az-firewall-watch
+            artifact: az-firewall-watch
 
     runs-on: ${{ matrix.os }}
 
@@ -67,13 +64,10 @@ jobs:
       - name: Package artifact
         shell: bash
         run: |
-          SRC="dist/${{ matrix.binary }}"
-          DST="dist/${{ matrix.artifact }}"
           if [ "${{ runner.os }}" == "Windows" ]; then
-            mv "${SRC}.exe" "${DST}.exe"
+            : # dist/az-firewall-watch.exe is already the correct name
           else
-            mv "$SRC" "$DST"
-            cd dist && tar -czf "${{ matrix.artifact }}.tar.gz" "${{ matrix.artifact }}" && rm "${{ matrix.artifact }}"
+            cd dist && tar -czf "${{ matrix.artifact }}.tar.gz" az-firewall-watch && rm az-firewall-watch
           fi
 
       - name: Upload binary
@@ -104,7 +98,7 @@ jobs:
             |----------|------|
             | Linux (x86_64) | `az-firewall-watch-linux.tar.gz` |
             | macOS Apple Silicon | `az-firewall-watch-macos.tar.gz` |
-            | Windows | `az-firewall-watch-windows.exe` |
+            | Windows | `az-firewall-watch.exe` |
 
             ### First run on macOS
             ```bash

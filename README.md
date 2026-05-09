@@ -15,21 +15,21 @@ Built by [CloudChristoph](https://github.com/cloudchristoph).
 
 Download the binary for your platform from the [latest release](../../releases/latest):
 
-| Platform            | File                            |
-| ------------------- | ------------------------------- |
-| Linux x86_64        | `az-firewall-watch-linux`       |
-| macOS Apple Silicon | `az-firewall-watch-macos`       |
-| Windows             | `az-firewall-watch-windows.exe` |
+| Platform            | File                                  |
+| ------------------- | ------------------------------------- |
+| Linux x86_64        | `az-firewall-watch-linux.tar.gz`      |
+| macOS Apple Silicon | `az-firewall-watch-macos.tar.gz`      |
+| Windows             | `az-firewall-watch.exe`               |
 
 ### macOS / Linux
 
 ```bash
 # 1. Download (example for macOS)
-curl -L -o az-firewall-watch \
-  https://github.com/cloudchristoph/az-firewall-watch/releases/latest/download/az-firewall-watch-macos
+curl -L -O \
+  https://github.com/cloudchristoph/az-firewall-watch/releases/latest/download/az-firewall-watch-macos.tar.gz
 
-# 2. Make executable
-chmod +x az-firewall-watch
+# 2. Extract (preserves execute permission)
+tar -xzf az-firewall-watch-macos.tar.gz
 
 # 3. macOS only: remove Gatekeeper quarantine flag
 xattr -d com.apple.quarantine az-firewall-watch
@@ -40,10 +40,10 @@ xattr -d com.apple.quarantine az-firewall-watch
 
 ### Windows
 
-Double-click `az-firewall-watch-windows.exe` or run from PowerShell:
+Double-click `az-firewall-watch.exe` or run from PowerShell:
 
 ```powershell
-.\az-firewall-watch-windows.exe
+.\az-firewall-watch.exe
 ```
 
 > **Windows SmartScreen** may warn on first launch — click **More info → Run anyway**.  
