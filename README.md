@@ -22,18 +22,18 @@ Azure Firewall
 ```
 
 1. **Diagnostic Settings** on your Azure Firewall forward structured log categories (NetworkRule, AppRule, IDPS, …) to an Event Hub namespace.  
-   → [Configure Azure Firewall diagnostics](https://learn.microsoft.com/azure/firewall/firewall-diagnostics)
+   → [Configure Azure Firewall diagnostics](https://learn.microsoft.com/en-us/azure/firewall/monitor-firewall#enable-structured-logs)
 
 2. **Event Hub** buffers the events (default retention: 1 day) so az-firewall-watch can consume them live.  
-   → [Azure Event Hubs overview](https://learn.microsoft.com/azure/event-hubs/event-hubs-about)
+   → [Azure Event Hubs overview](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about)
 
 ### 💰 Cost considerations
 
 An Event Hub for firewall logs is typically inexpensive:
 
-| Tier | ~Rough monthly cost |
-| --- | --- |
-| **Basic** (1 TU) | ~$10 + ~$0.028 per million events |
+| Tier                | ~Rough monthly cost                                                       |
+| ------------------- | ------------------------------------------------------------------------- |
+| **Basic** (1 TU)    | ~$10 + ~$0.028 per million events                                         |
 | **Standard** (1 TU) | ~$22 + ~$0.028 per million events — required for multiple consumer groups |
 
 Firewall log volume depends on traffic intensity — most environments stay comfortably within a single Throughput Unit.  
@@ -102,11 +102,11 @@ The scripts create a virtual environment, install dependencies, and launch the a
 
 On first launch the wizard asks how you want to connect and then writes `.env` automatically. Three options are available:
 
-| Option | Description | Azure CLI required |
-| --- | --- | :---: |
-| **1 — Pick existing** | Choose an existing Event Hub from your subscriptions | ✅ |
-| **2 — Deploy new** | Discover your firewall and deploy a new Event Hub incl. diagnostic settings (~2–3 min) | ✅ |
-| **3 — Paste string** | Paste a connection string directly — no Azure CLI needed | — |
+| Option                | Description                                                                            | Azure CLI required |
+| --------------------- | -------------------------------------------------------------------------------------- | :----------------: |
+| **1 — Pick existing** | Choose an existing Event Hub from your subscriptions                                   |         ✅          |
+| **2 — Deploy new**    | Discover your firewall and deploy a new Event Hub incl. diagnostic settings (~2–3 min) |         ✅          |
+| **3 — Paste string**  | Paste a connection string directly — no Azure CLI needed                               |         —          |
 
 Run with `--reconfigure` to redo setup at any time:
 
@@ -118,15 +118,15 @@ Run with `--reconfigure` to redo setup at any time:
 
 ## ⌨️ Key bindings
 
-| Key | Action |
-| --- | --- |
-| `q` or `Ctrl` + `q` | Quit |
-| `Ctrl` + `p` | Pause / resume streaming |
-| `Enter` | Open detail view for the selected row |
-| `c` | Clear all rows from the table |
-| `Escape` | Clear all filter inputs |
-| `f` | Jump focus to the filters |
-| `Tab` | Move between filter inputs |
+| Key                 | Action                                |
+| ------------------- | ------------------------------------- |
+| `q` or `Ctrl` + `q` | Quit                                  |
+| `Ctrl` + `p`        | Pause / resume streaming              |
+| `Enter`             | Open detail view for the selected row |
+| `c`                 | Clear all rows from the table         |
+| `Escape`            | Clear all filter inputs               |
+| `f`                 | Jump focus to the filters             |
+| `Tab`               | Move between filter inputs            |
 
 ---
 
@@ -134,14 +134,14 @@ Run with `--reconfigure` to redo setup at any time:
 
 All filters are **case-insensitive substring matches** applied instantly as you type.
 
-| Filter | Matches against |
-| --- | --- |
-| Source IP | `sourceip` field |
-| Dest / FQDN | `targetip` / FQDN field |
-| Action | `allow`, `deny`, `dnat`, `alert` |
-| Category | `NetworkRule`, `AppRule`, `DnsQuery`, `NATRule`, `IDPS`, `ThreatIntel`, … |
-| Protocol | `TCP`, `UDP`, `HTTPS`, `HTTP`, … |
-| Port | Destination port (e.g. `443`, `80`, `53`) |
+| Filter      | Matches against                                                           |
+| ----------- | ------------------------------------------------------------------------- |
+| Source IP   | `sourceip` field                                                          |
+| Dest / FQDN | `targetip` / FQDN field                                                   |
+| Action      | `allow`, `deny`, `dnat`, `alert`                                          |
+| Category    | `NetworkRule`, `AppRule`, `DnsQuery`, `NATRule`, `IDPS`, `ThreatIntel`, … |
+| Protocol    | `TCP`, `UDP`, `HTTPS`, `HTTP`, …                                          |
+| Port        | Destination port (e.g. `443`, `80`, `53`)                                 |
 
 Press `Escape` to clear all filters at once, or `f` to jump directly into the filter bar.
 
@@ -154,20 +154,20 @@ Press `Escape` to clear all filters at once, or `f` to jump directly into the fi
 If you already have an Event Hub connection string, create `.env` next to the binary (or in the repo root):
 
 ```ini
-EVENT_HUB_CONNECTION_STRING=Endpoint=sb://your-ns.servicebus.windows.net/;SharedAccessKeyName=...;EntityPath=firewall-logs
+EVENT_HUB_CONNECTION_STRING=Endpoint=sb://your-ns.servicebus.windows.net/;SharedAccessKeyName=...;EntityPath=your-hub-name
 EVENT_HUB_CONSUMER_GROUP=$Default
 EVENT_HUB_START_POSITION=latest   # or: earliest
 ```
 
 ### Environment variables
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `EVENT_HUB_CONNECTION_STRING` | Primary connection string with `EntityPath=firewall-logs` | *(required)* |
-| `EVENT_HUB_CONSUMER_GROUP` | Consumer group | `$Default` |
-| `EVENT_HUB_START_POSITION` | `latest` (live only) or `earliest` (read full retention) | `latest` |
+| Variable                      | Description                                                  | Default      |
+| ----------------------------- | ------------------------------------------------------------ | ------------ |
+| `EVENT_HUB_CONNECTION_STRING` | Primary connection string incl. `EntityPath=<your-hub-name>` | *(required)* |
+| `EVENT_HUB_CONSUMER_GROUP`    | Consumer group                                               | `$Default`   |
+| `EVENT_HUB_START_POSITION`    | `latest` (live only) or `earliest` (read full retention)     | `latest`     |
 
-> **Tip:** If you deploy the Event Hub manually, configure [Diagnostic Settings](https://learn.microsoft.com/azure/azure-monitor/essentials/diagnostic-settings) on your Azure Firewall to forward logs to the `firewall-logs` Event Hub.
+> **Tip:** If you deploy the Event Hub manually, configure [Diagnostic Settings](https://learn.microsoft.com/en-us/azure/azure-monitor/platform/diagnostic-settings) on your Azure Firewall to forward logs to the `firewall-logs` Event Hub.
 
 ---
 
@@ -175,15 +175,15 @@ EVENT_HUB_START_POSITION=latest   # or: earliest
 
 Both legacy and structured log formats are parsed:
 
-| Category shown | Raw Azure category |
-| --- | --- |
-| NetworkRule | `AZFWNetworkRule` / `AzureFirewallNetworkRule` |
-| AppRule | `AZFWApplicationRule` / `AzureFirewallApplicationRule` |
-| NATRule | `AZFWNatRule` / `AzureFirewallNatRuleLog` |
-| DnsQuery | `AZFWDnsQuery` |
-| DnsProxy | `AzureFirewallDnsProxy` |
-| IDPS | `AZFWIdpsSignature` |
-| ThreatIntel | `AZFWThreatIntel` |
+| Category shown | Raw Azure category                                     |
+| -------------- | ------------------------------------------------------ |
+| NetworkRule    | `AZFWNetworkRule` / `AzureFirewallNetworkRule`         |
+| AppRule        | `AZFWApplicationRule` / `AzureFirewallApplicationRule` |
+| NATRule        | `AZFWNatRule` / `AzureFirewallNatRuleLog`              |
+| DnsQuery       | `AZFWDnsQuery`                                         |
+| DnsProxy       | `AzureFirewallDnsProxy`                                |
+| IDPS           | `AZFWIdpsSignature`                                    |
+| ThreatIntel    | `AZFWThreatIntel`                                      |
 
 ---
 
