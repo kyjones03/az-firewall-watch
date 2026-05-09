@@ -15,10 +15,9 @@ body:
     attributes:
       label: Operating System
       options:
-        - macOS (Apple Silicon)
-        - macOS (Intel)
-        - Linux
         - Windows
+        - macOS (Apple Silicon)
+        - Linux
     validations:
       required: true
 
