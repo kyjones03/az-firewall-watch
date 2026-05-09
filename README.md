@@ -53,11 +53,11 @@ Double-click `az-firewall-watch.exe` or run from PowerShell:
 
 On first launch the wizard asks how you want to connect and then writes `.env` automatically. Three options are available:
 
-| Option | Description | Azure CLI required |
-| ------ | ----------- | :----------------: |
-| **1 — Pick existing** | Choose an existing Event Hub from your subscriptions | ✅ |
-| **2 — Deploy new** | Discover your firewall and deploy a new Event Hub incl. diagnostic settings (~2–3 min) | ✅ |
-| **3 — Paste string** | Paste a connection string directly — no Azure CLI needed | — |
+| Option                | Description                                                                            | Azure CLI required |
+| --------------------- | -------------------------------------------------------------------------------------- | :----------------: |
+| **1 — Pick existing** | Choose an existing Event Hub from your subscriptions                                   |         ✅          |
+| **2 — Deploy new**    | Discover your firewall and deploy a new Event Hub incl. diagnostic settings (~2–3 min) |         ✅          |
+| **3 — Paste string**  | Paste a connection string directly — no Azure CLI needed                               |         —          |
 
 Run with `--reconfigure` to redo setup at any time:
 
