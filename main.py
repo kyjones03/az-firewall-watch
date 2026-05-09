@@ -391,6 +391,7 @@ class FirewallLogApp(App[None]):
             yield Input(placeholder="Action",       id="f-action", classes="filter-input")
             yield Input(placeholder="Category",     id="f-cat",    classes="filter-input")
             yield Input(placeholder="Protocol",     id="f-proto",  classes="filter-input")
+            yield Input(placeholder="Port",          id="f-port",   classes="filter-input")
         yield DataTable(zebra_stripes=True, cursor_type="row", id="log-table")
         yield StatusBar(id="status")
         yield Footer()
@@ -615,6 +616,7 @@ class FirewallLogApp(App[None]):
             "action": self.query_one("#f-action", Input).value.lower(),
             "cat":    self.query_one("#f-cat",    Input).value.lower(),
             "proto":  self.query_one("#f-proto",  Input).value.lower(),
+            "port":   self.query_one("#f-port",   Input).value.lower(),
         }
 
     @staticmethod
@@ -624,6 +626,7 @@ class FirewallLogApp(App[None]):
         if f["action"] and f["action"] not in row.action.lower():               return False
         if f["cat"]    and f["cat"]    not in row.category.lower():             return False
         if f["proto"]  and f["proto"]  not in row.protocol.lower():             return False
+        if f["port"]   and f["port"]   not in row.targetport.lower():           return False
         return True
 
     @on(Input.Changed, ".filter-input")
@@ -654,7 +657,7 @@ class FirewallLogApp(App[None]):
         status.skipped = 0
 
     def action_clear_filters(self) -> None:
-        for fid in ("#f-src", "#f-dst", "#f-action", "#f-cat", "#f-proto"):
+        for fid in ("#f-src", "#f-dst", "#f-action", "#f-cat", "#f-proto", "#f-port"):
             self.query_one(fid, Input).value = ""
         self._refresh_table()
 
