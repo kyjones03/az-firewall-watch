@@ -159,12 +159,11 @@ class ConnectingDialog(ModalScreen[None]):
             yield LoadingIndicator()
             yield Button("Cancel  (q)", variant="default", id="btn-cancel")
 
-    def show_success(self) -> None:
-        """Switch the dialog to a success state (called before auto-dismiss)."""
+    def show_waiting(self) -> None:
+        """Switch to 'connected, waiting for first event' state — keeps spinner."""
         title = self.query_one("#title", Static)
-        title.update("✓  Connected to Event Hub!")
+        title.update("✓  Connected — waiting for first event…")
         title.add_class("success")
-        self.query_one(LoadingIndicator).display = False
         self.query_one(Button).display = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -469,20 +468,19 @@ class FirewallLogApp(App[None]):
 
                     attempt = 0  # reset backoff counter after a successful connect
                     if _splash_shown:
-                        _dialog.show_success()
-                        await asyncio.sleep(2)
-                        self.pop_screen()
-                        _splash_shown = False
+                        _dialog.show_waiting()
                     status.status = "Connected"
                     self.sub_title = "Live Log Monitor  |  connected"
 
                     async def on_event(partition_ctx, event) -> None:  # type: ignore[misc]
+                        nonlocal _splash_shown
                         if event is None or self._paused:
                             return
                         try:
                             body = json.loads(event.body_as_str())
                         except (ValueError, TypeError):
                             return
+                        has_real = False
                         for rec in body.get("records", []):
                             if not self._fw_name_set:
                                 rid: str = rec.get("resourceId", "")
@@ -496,6 +494,10 @@ class FirewallLogApp(App[None]):
                                 self._skip_pending += 1
                             else:
                                 self._pending.append(row)
+                                has_real = True
+                        if has_real and _splash_shown:
+                            _splash_shown = False
+                            self.pop_screen()
 
                     await client.receive(on_event=on_event, starting_position=position)
 
