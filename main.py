@@ -48,7 +48,7 @@ except Exception:
 sys.path.insert(0, str(_BASE_DIR))
 from fw_parser import FirewallDataRow, parse_record  # noqa: E402
 from helpers import _category_text, _highlight, _parse_eventhub_endpoint, _to_local  # noqa: E402
-from dialogs import ConnectingDialog, DetailDialog, ErrorDialog, StatusBar  # noqa: E402
+from dialogs import ConnectingDialog, DetailDialog, ErrorDialog, StatusBar, UpdateDialog  # noqa: E402
 
 # ── config ────────────────────────────────────────────────────────────────────
 def _load_env(path: Path, override: bool = False) -> None:
@@ -133,6 +133,8 @@ class FirewallLogApp(App[None]):
         self._skip_pending: int = 0
         self._paused: bool = False
         self._fw_name_set: bool = False
+        self._connecting_active: bool = False
+        self._pending_update: tuple[str, str] | None = None
 
     # ── layout ─────────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -158,6 +160,46 @@ class FirewallLogApp(App[None]):
         )
         self._start_stream()
         self.set_interval(1.0, self._flush)
+        self._check_update()
+
+    # ── Update check ────────────────────────────────────────────────────────────
+    @work(exclusive=False)
+    async def _check_update(self) -> None:
+        """Silently fetch the latest GitHub release and show UpdateDialog if newer."""
+        import urllib.request
+        import urllib.error
+        import json as _json
+
+        url = "https://api.github.com/repos/cloudchristoph/az-firewall-watch/releases/latest"
+        try:
+            def _fetch() -> dict:
+                req = urllib.request.Request(
+                    url, headers={"User-Agent": f"az-firewall-watch/{VERSION}"}
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+                    return _json.loads(resp.read())
+
+            data: dict = await asyncio.get_event_loop().run_in_executor(None, _fetch)
+            tag = data.get("tag_name", "").lstrip("v")
+            release_url: str = data.get(
+                "html_url",
+                "https://github.com/cloudchristoph/az-firewall-watch/releases",
+            )
+        except Exception:
+            return  # no network / API error — fail silently
+
+        def _ver(v: str) -> tuple:
+            try:
+                return tuple(int(x) for x in v.split("."))
+            except ValueError:
+                return (0,)
+
+        if _ver(tag) > _ver(VERSION):
+            # Always push immediately — even over ConnectingDialog.
+            # The first-event handler will surgically remove ConnectingDialog
+            # from beneath it without touching UpdateDialog.
+            self._pending_update = (tag, release_url)
+            await self.push_screen(UpdateDialog(tag, release_url))
 
     # ── Event Hub worker ────────────────────────────────────────────────────────
     @work(exclusive=True)
@@ -194,6 +236,7 @@ class FirewallLogApp(App[None]):
 
         # Show the connecting splash and keep a flag so we know when to dismiss it.
         _dialog = ConnectingDialog(namespace, hub)
+        self._connecting_active = True
         await self.push_screen(_dialog)
         _splash_shown = True
 
@@ -251,12 +294,24 @@ class FirewallLogApp(App[None]):
                                 has_real = True
                         if has_real and _splash_shown:
                             _splash_shown = False
-                            self.pop_screen()
+                            self._connecting_active = False
+                            if isinstance(self.screen, UpdateDialog):
+                                # UpdateDialog is on top of ConnectingDialog.
+                                # Save its state, pop both, re-push UpdateDialog.
+                                upd_tag = self.screen._latest
+                                upd_url = self.screen._url
+                                self._pending_update = None
+                                self.pop_screen()   # remove UpdateDialog
+                                self.pop_screen()   # remove ConnectingDialog
+                                await self.push_screen(UpdateDialog(upd_tag, upd_url))
+                            else:
+                                self.pop_screen()   # remove ConnectingDialog
 
                     await client.receive(on_event=on_event, starting_position=position)
 
             except asyncio.CancelledError:
                 if _splash_shown:
+                    self._connecting_active = False
                     self.pop_screen()
                 status.status = "Streaming stopped"
                 return
@@ -295,6 +350,7 @@ class FirewallLogApp(App[None]):
                 )
             status.status = f"Failed after {_MAX_ATTEMPTS} attempts — see dialog"
             if _splash_shown:
+                self._connecting_active = False
                 self.pop_screen()
             await self.push_screen(ErrorDialog(str(last_exc), hint))
 

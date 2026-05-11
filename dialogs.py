@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.containers import Horizontal
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, LoadingIndicator, Static
@@ -216,3 +217,65 @@ class StatusBar(Static):
 
     def on_click(self) -> None:
         self.app.action_toggle_pause()  # type: ignore[attr-defined]
+
+
+class UpdateDialog(ModalScreen[None]):
+    """Shown on startup when a newer GitHub release is available."""
+
+    DEFAULT_CSS = """
+    UpdateDialog {
+        align: center middle;
+    }
+    UpdateDialog > #dialog {
+        width: 66;
+        height: auto;
+        background: $surface;
+        border: thick $success;
+        padding: 1 2;
+    }
+    UpdateDialog > #dialog > #upd-title {
+        text-style: bold;
+        color: $success;
+        margin-bottom: 1;
+    }
+    UpdateDialog > #dialog > #upd-url {
+        margin-bottom: 1;
+    }
+    UpdateDialog > #dialog > .btn-row {
+        height: 3;
+    }
+    UpdateDialog > #dialog > .btn-row > Button {
+        width: 1fr;
+    }
+    """
+
+    def __init__(self, latest: str, url: str) -> None:
+        super().__init__()
+        self._latest = latest
+        self._url = url
+
+    def compose(self) -> ComposeResult:
+        with Static(id="dialog"):
+            yield Static("\u2b06  Update available", id="upd-title")
+            yield Static(
+                f"Version [bold]{self._latest}[/bold] is now available on GitHub.",
+                markup=True,
+            )
+            yield Static(f"[dim]{self._url}[/dim]", markup=True, id="upd-url")
+            with Horizontal(classes="btn-row"):
+                yield Button("Open in browser", variant="success", id="btn-open")
+                yield Button("Dismiss  (Esc)", variant="default", id="btn-dismiss")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-open":
+            import webbrowser
+
+            try:
+                webbrowser.open(self._url)
+            except Exception:
+                pass
+        self.dismiss()
+
+    def on_key(self, event) -> None:
+        if event.key in ("escape", "q"):
+            self.dismiss()
