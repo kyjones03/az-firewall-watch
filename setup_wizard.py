@@ -2,13 +2,14 @@
 """
 Cross-platform setup wizard for fw-log-tui.
 
-Checks for Azure CLI, verifies login, and writes the Event Hub connection
-string to .env.  Works on Linux, macOS, and Windows.
+Checks for Azure CLI, verifies login, and writes Event Hub credentials
+to .env (either a connection string or Entra ID namespace/hub config).
+Works on Linux, macOS, and Windows.
 
 Usage (standalone):
     python setup_wizard.py [--reconfigure]
 
-Called automatically by main.py when EVENT_HUB_CONNECTION_STRING is not set.
+Called automatically by main.py when no Event Hub credentials are configured.
 """
 from __future__ import annotations
 
@@ -71,6 +72,7 @@ def show_menu() -> None:
     print("    1)  Choose from existing Event Hubs in my subscriptions")
     print("    2)  Discover firewall, deploy Event Hub + configure diagnostics  (~2–3 min)")
     print("    3)  Paste a connection string directly")
+    print("    4)  Use Entra ID (passwordless)  — enter namespace + hub name")
     print("    q)  Quit")
     print()
 
@@ -102,6 +104,44 @@ def paste_connection_string(env_file: Path) -> bool:
                 continue
         write_env(env_file, raw)
         return True
+
+
+# ── 3d. Entra ID (passwordless) setup ─────────────────────────────────────────
+def setup_entra_id(env_file: Path) -> bool:
+    print()
+    print(f"  {bold('Entra ID (passwordless) authentication')}")
+    print(f"  {_c('36', 'No secrets are stored — authentication uses DefaultAzureCredential')}")
+    print(f"  {_c('36', '(Azure CLI login, managed identity, environment credentials, etc.)')}")
+    print()
+    print(f"  {_c('33', 'Prerequisite:')} Your identity must have the")
+    print(f"  {bold('Azure Event Hubs Data Receiver')} role on the namespace or hub.")
+    print()
+
+    while True:
+        namespace = input("  Fully qualified namespace (e.g. mynamespace.servicebus.windows.net) or q to go back: ").strip()
+        if namespace.lower() == "q":
+            return False
+        if not namespace:
+            warn("Namespace must not be empty.")
+            continue
+        if not namespace.endswith(".servicebus.windows.net"):
+            warn("Expected format: <name>.servicebus.windows.net")
+            retry = input("  Use it anyway? [y/N]: ").strip().lower()
+            if retry != "y":
+                continue
+        break
+
+    while True:
+        hub_name = input("  Event Hub name: ").strip()
+        if hub_name.lower() == "q":
+            return False
+        if not hub_name:
+            warn("Event Hub name must not be empty.")
+            continue
+        break
+
+    write_env_entra(env_file, namespace, hub_name)
+    return True
 
 
 # ── Azure CLI checks ───────────────────────────────────────────────────────────
@@ -139,6 +179,7 @@ def check_login() -> None:
 
 # ── .env helpers ───────────────────────────────────────────────────────────────
 def get_existing_conn_str(env_file: Path) -> Optional[str]:
+    """Return a non-empty connection string from .env, or None."""
     if not env_file.exists():
         return None
     for line in env_file.read_text(encoding="utf-8").splitlines():
@@ -148,13 +189,44 @@ def get_existing_conn_str(env_file: Path) -> Optional[str]:
     return None
 
 
+def has_entra_config(env_file: Path) -> bool:
+    """Return True if .env has EVENT_HUB_NAMESPACE and EVENT_HUB_NAME set."""
+    if not env_file.exists():
+        return False
+    found_ns = found_name = False
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if line.startswith("EVENT_HUB_NAMESPACE=") and line.split("=", 1)[1].strip():
+            found_ns = True
+        if line.startswith("EVENT_HUB_NAME=") and line.split("=", 1)[1].strip():
+            found_name = True
+    return found_ns and found_name
+
+
 def write_env(env_file: Path, conn_str: str) -> None:
+    """Write a connection-string-based .env file."""
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     env_file.write_text(
         f"# Written by setup_wizard.py - {ts}\n"
         "# Do NOT commit this file - it contains a shared access key.\n"
         f"EVENT_HUB_CONNECTION_STRING={conn_str}\n"
+        "EVENT_HUB_CONSUMER_GROUP=$Default\n"
+        "EVENT_HUB_START_POSITION=latest\n",
+        encoding="utf-8",
+    )
+    ok(f".env written to {env_file}")
+
+
+def write_env_entra(env_file: Path, namespace: str, hub_name: str) -> None:
+    """Write an Entra ID (passwordless) .env file."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    env_file.write_text(
+        f"# Written by setup_wizard.py - {ts}\n"
+        "# Entra ID (passwordless) authentication — no secrets stored.\n"
+        "# Your identity must have 'Azure Event Hubs Data Receiver' role.\n"
+        f"EVENT_HUB_NAMESPACE={namespace}\n"
+        f"EVENT_HUB_NAME={hub_name}\n"
         "EVENT_HUB_CONSUMER_GROUP=$Default\n"
         "EVENT_HUB_START_POSITION=latest\n",
         encoding="utf-8",
@@ -576,7 +648,7 @@ def run_wizard(base_dir: Path, reconfigure: bool = False) -> None:
     env_file = base_dir / ".env"
 
     # Skip if already configured
-    if not reconfigure and get_existing_conn_str(env_file):
+    if not reconfigure and (get_existing_conn_str(env_file) or has_entra_config(env_file)):
         return
 
     print_header()
@@ -593,7 +665,7 @@ def run_wizard(base_dir: Path, reconfigure: bool = False) -> None:
     while True:
         print()
         show_menu()
-        choice = input("  Choice [1/2/3/q]: ").strip().lower()
+        choice = input("  Choice [1/2/3/4/q]: ").strip().lower()
         print()
         if choice == "1":
             _ensure_az()
@@ -606,11 +678,14 @@ def run_wizard(base_dir: Path, reconfigure: bool = False) -> None:
         elif choice == "3":
             if paste_connection_string(env_file):
                 break
+        elif choice == "4":
+            if setup_entra_id(env_file):
+                break
         elif choice == "q":
             print("  Bye.")
             sys.exit(0)
         else:
-            warn("Please enter 1, 2, 3, or q.")
+            warn("Please enter 1, 2, 3, 4, or q.")
 
     print()
     ok("Setup complete — launching the TUI…")
