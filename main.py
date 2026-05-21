@@ -250,6 +250,7 @@ class FirewallLogApp(App[None]):
         self._connecting_active = True
         await self.push_screen(_dialog)
         _splash_shown = True
+        _credential = None  # track credential for cleanup on error
 
         while attempt < _MAX_ATTEMPTS:
             self.sub_title = "Live Log Monitor  |  connecting..."
