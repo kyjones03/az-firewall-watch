@@ -259,8 +259,9 @@ class FirewallLogApp(App[None]):
             try:
                 # Build the client — prefer Entra ID when namespace+hub are set.
                 if use_entra:
+                    from azure.core.pipeline.transport import AsyncioRequestsTransport  # noqa: E402
                     from azure.identity.aio import DefaultAzureCredential  # type: ignore[import]
-                    _credential = DefaultAzureCredential()
+                    _credential = DefaultAzureCredential(transport=AsyncioRequestsTransport())
                     client = EventHubConsumerClient(
                         fully_qualified_namespace=eh_namespace,
                         eventhub_name=eh_name,
