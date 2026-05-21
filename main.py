@@ -61,9 +61,11 @@ def _load_env(path: Path, override: bool = False) -> None:
 
 _load_env(_BASE_DIR / ".env")
 
-# Run the setup wizard automatically if no connection string is configured.
+# Run the setup wizard automatically if no Event Hub credentials are configured.
 # Pass --reconfigure to redo setup even when .env already exists.
-if not os.environ.get("EVENT_HUB_CONNECTION_STRING") or "--reconfigure" in sys.argv:
+_has_conn_str = bool(os.environ.get("EVENT_HUB_CONNECTION_STRING"))
+_has_entra = bool(os.environ.get("EVENT_HUB_NAMESPACE") and os.environ.get("EVENT_HUB_NAME"))
+if (not _has_conn_str and not _has_entra) or "--reconfigure" in sys.argv:
     from setup_wizard import run_wizard  # noqa: E402
     run_wizard(_BASE_DIR, reconfigure="--reconfigure" in sys.argv)
     _load_env(_BASE_DIR / ".env", override=True)
@@ -208,20 +210,29 @@ class FirewallLogApp(App[None]):
         from azure.eventhub.aio import EventHubConsumerClient  # type: ignore[import]
 
         conn_str = os.environ.get("EVENT_HUB_CONNECTION_STRING", "")
+        eh_namespace = os.environ.get("EVENT_HUB_NAMESPACE", "")  # fully qualified, e.g. mynamespace.servicebus.windows.net
+        eh_name = os.environ.get("EVENT_HUB_NAME", "")
         consumer_group = os.environ.get("EVENT_HUB_CONSUMER_GROUP", "$Default")
         start_pos = os.environ.get("EVENT_HUB_START_POSITION", "latest")
         position = "@latest" if start_pos == "latest" else "@earliest"
+        use_entra = bool(eh_namespace and eh_name)
 
         status = self.query_one("#status", StatusBar)
 
-        if not conn_str:
+        if not conn_str and not use_entra:
             status.status = (
-                "ERROR: EVENT_HUB_CONNECTION_STRING not set — "
-                "copy .env.sample to .env and fill in the value"
+                "ERROR: No Event Hub credentials configured — set either "
+                "EVENT_HUB_NAMESPACE + EVENT_HUB_NAME (for Entra ID) or "
+                "EVENT_HUB_CONNECTION_STRING (for SAS key) in .env"
             )
             return
 
-        namespace, hub = _parse_eventhub_endpoint(conn_str)
+        # Resolve display values for the connecting dialog.
+        if use_entra:
+            namespace = eh_namespace
+            hub = eh_name
+        else:
+            namespace, hub = _parse_eventhub_endpoint(conn_str)
 
         # Keywords that indicate a configuration error rather than a transient fault.
         _AUTH_KEYWORDS = (
@@ -245,12 +256,27 @@ class FirewallLogApp(App[None]):
             status.status = "Connecting to Event Hub…"
 
             try:
-                async with EventHubConsumerClient.from_connection_string(
-                    conn_str,
-                    consumer_group=consumer_group,
-                    load_balancing_interval=1,  # claim partitions after 1s instead of default ~30s
-                    retry_total=0,              # no SDK-internal retries — our loop handles that
-                ) as client:
+                # Build the client — prefer Entra ID when namespace+hub are set.
+                if use_entra:
+                    from azure.identity.aio import DefaultAzureCredential  # type: ignore[import]
+                    _credential = DefaultAzureCredential()
+                    client = EventHubConsumerClient(
+                        fully_qualified_namespace=eh_namespace,
+                        eventhub_name=eh_name,
+                        consumer_group=consumer_group,
+                        credential=_credential,
+                        load_balancing_interval=1,
+                        retry_total=0,
+                    )
+                else:
+                    _credential = None
+                    client = EventHubConsumerClient.from_connection_string(
+                        conn_str,
+                        consumer_group=consumer_group,
+                        load_balancing_interval=1,
+                        retry_total=0,
+                    )
+                async with client:
                     # Probe the connection before starting the long-running receive().
                     # get_partition_ids() is a one-shot call without an internal reconnect
                     # loop, so it fails fast and visibly when the string is wrong or the
@@ -310,6 +336,8 @@ class FirewallLogApp(App[None]):
                     await client.receive(on_event=on_event, starting_position=position)
 
             except asyncio.CancelledError:
+                if _credential:
+                    await _credential.close()
                 if _splash_shown:
                     self._connecting_active = False
                     self.pop_screen()
@@ -317,6 +345,8 @@ class FirewallLogApp(App[None]):
                 return
 
             except Exception as exc:
+                if _credential:
+                    await _credential.close()
                 last_exc = exc
                 self._fw_name_set = False  # allow subtitle refresh on next connect
                 attempt += 1
@@ -338,10 +368,17 @@ class FirewallLogApp(App[None]):
             err_lower = str(last_exc).lower()
             is_cfg_error = any(kw in err_lower for kw in _AUTH_KEYWORDS)
             if is_cfg_error:
-                hint = (
-                    "The credentials in your connection string were rejected.\n"
-                    "Restart the app with  --reconfigure  to update the settings."
-                )
+                if use_entra:
+                    hint = (
+                        "Entra ID authentication was rejected.\n"
+                        "Ensure your identity has the 'Azure Event Hubs Data Receiver' role\n"
+                        "on the Event Hub namespace or entity, then restart the app."
+                    )
+                else:
+                    hint = (
+                        "The credentials in your connection string were rejected.\n"
+                        "Restart the app with  --reconfigure  to update the settings."
+                    )
             else:
                 hint = (
                     "The Event Hub namespace could not be reached.\n"

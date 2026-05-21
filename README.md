@@ -159,13 +159,28 @@ EVENT_HUB_CONSUMER_GROUP=$Default
 EVENT_HUB_START_POSITION=latest   # or: earliest
 ```
 
+Alternatively, for **Entra ID (passwordless) authentication** — required when SAS keys are disabled on the namespace:
+
+```ini
+EVENT_HUB_NAMESPACE=your-ns.servicebus.windows.net
+EVENT_HUB_NAME=your-hub-name
+EVENT_HUB_CONSUMER_GROUP=$Default
+EVENT_HUB_START_POSITION=latest
+```
+
+> **Note:** Entra ID auth uses `DefaultAzureCredential` which picks up Azure CLI login, managed identity, environment variables, etc. Your identity must have the **Azure Event Hubs Data Receiver** role on the namespace or hub.
+
 ### Environment variables
 
 | Variable                      | Description                                                  | Default      |
 | ----------------------------- | ------------------------------------------------------------ | ------------ |
-| `EVENT_HUB_CONNECTION_STRING` | Primary connection string incl. `EntityPath=<your-hub-name>` | *(required)* |
+| `EVENT_HUB_CONNECTION_STRING` | Primary connection string incl. `EntityPath=<your-hub-name>` | —            |
+| `EVENT_HUB_NAMESPACE`         | Fully qualified namespace (e.g. `mynamespace.servicebus.windows.net`) — for Entra ID auth | —            |
+| `EVENT_HUB_NAME`              | Event Hub name — for Entra ID auth                           | —            |
 | `EVENT_HUB_CONSUMER_GROUP`    | Consumer group                                               | `$Default`   |
 | `EVENT_HUB_START_POSITION`    | `latest` (live only) or `earliest` (read full retention)     | `latest`     |
+
+> When both `EVENT_HUB_NAMESPACE`/`EVENT_HUB_NAME` and `EVENT_HUB_CONNECTION_STRING` are set, Entra ID is preferred.
 
 > **Tip:** If you deploy the Event Hub manually, configure [Diagnostic Settings](https://learn.microsoft.com/en-us/azure/azure-monitor/platform/diagnostic-settings) on your Azure Firewall to forward logs to the `firewall-logs` Event Hub.
 
