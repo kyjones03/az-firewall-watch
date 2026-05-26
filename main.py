@@ -6,8 +6,8 @@ Connects to an Azure Event Hub and displays incoming firewall logs in a
 filterable TUI table. Connection string is read from .env in this folder.
 
 Key bindings
-  q        Quit
-  ctrl+p   Pause / resume streaming  (or click the status bar)
+  q / ctrl+q  Quit
+  ctrl+p      Pause / resume streaming  (or click the status bar)
   c        Clear all rows
   Escape   Clear all filter inputs
   f        Focus the Source-IP filter
@@ -80,6 +80,7 @@ class FirewallLogApp(App[None]):
 
     TITLE = f"Azure Firewall Watch v{VERSION}"
     SUB_TITLE = "Live Log Monitor  |  connecting..."
+    ENABLE_COMMAND_PALETTE = False
 
     CSS = """
     Screen {
@@ -120,7 +121,8 @@ class FirewallLogApp(App[None]):
     """
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
+        Binding("q", "quit", "Quit", show=False),
+        Binding("ctrl+q", "quit", "Quit", priority=True, show=True),
         Binding("ctrl+p", "toggle_pause", "Pause/Resume", priority=True, show=True),
         Binding("c", "clear_logs", "Clear"),
         Binding("escape", "clear_filters", "Clear Filters", priority=True),
