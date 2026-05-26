@@ -363,8 +363,10 @@ class FirewallLogApp(App[None]):
                                     ).get("value", []):
                                         _data_actions.extend(_entry.get("dataActions", []))
                                     if not any(
-                                        "messages/receive" in _a
-                                        or _a in ("*", "Microsoft.EventHub/*")
+                                        # RG/subscription-inherited assignments use
+                                        # wildcard form: "Microsoft.EventHub/*/receive/action"
+                                        ("eventhub" in _a.lower() and "receive" in _a.lower())
+                                        or _a.lower() in ("*", "microsoft.eventhub/*")
                                         for _a in _data_actions
                                     ):
                                         raise PermissionError(
