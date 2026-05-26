@@ -278,68 +278,71 @@ class FirewallLogApp(App[None]):
                         load_balancing_interval=1,
                         retry_total=0,
                     )
-                async with client:
-                    # Probe the connection before starting the long-running receive().
-                    # get_partition_ids() is a one-shot call without an internal reconnect
-                    # loop, so it fails fast and visibly when the string is wrong or the
-                    # namespace is unreachable.
-                    try:
-                        await asyncio.wait_for(client.get_partition_ids(), timeout=15)
-                    except asyncio.TimeoutError:
-                        raise TimeoutError(
-                            "Event Hub did not respond within 15 s — "
-                            "check connection string and network"
-                        )
-
-                    attempt = 0  # reset backoff counter after a successful connect
-                    if _splash_shown:
-                        _dialog.show_waiting()
-                    status.status = "Connected"
-                    self.sub_title = "Live Log Monitor  |  connected"
-
-                    async def on_event(partition_ctx, event) -> None:  # type: ignore[misc]
-                        nonlocal _splash_shown
-                        if event is None or self._paused:
-                            return
+                try:
+                    async with client:
+                        # Probe the connection before starting the long-running receive().
+                        # get_partition_ids() is a one-shot call without an internal reconnect
+                        # loop, so it fails fast and visibly when the string is wrong or the
+                        # namespace is unreachable.
                         try:
-                            body = json.loads(event.body_as_str())
-                        except (ValueError, TypeError):
-                            return
-                        has_real = False
-                        for rec in body.get("records", []):
-                            if not self._fw_name_set:
-                                rid: str = rec.get("resourceId", "")
-                                if "/AZUREFIREWALLS/" in rid.upper():
-                                    self.sub_title = rid.split("/")[-1]
-                                    self._fw_name_set = True
-                            row = parse_record(rec)
-                            if row is None:
-                                continue
-                            if "SKIP:" in row.category:
-                                self._skip_pending += 1
-                            else:
-                                self._pending.append(row)
-                                has_real = True
-                        if has_real and _splash_shown:
-                            _splash_shown = False
-                            self._connecting_active = False
-                            if isinstance(self.screen, UpdateDialog):
-                                # UpdateDialog is on top of ConnectingDialog.
-                                # Save its state, pop both, re-push UpdateDialog.
-                                upd_tag = self.screen._latest
-                                upd_url = self.screen._url
-                                self._pending_update = None
-                                self.pop_screen()   # remove UpdateDialog
-                                self.pop_screen()   # remove ConnectingDialog
-                                await self.push_screen(UpdateDialog(upd_tag, upd_url))
-                            else:
-                                self.pop_screen()   # remove ConnectingDialog
+                            await asyncio.wait_for(client.get_partition_ids(), timeout=15)
+                        except asyncio.TimeoutError:
+                            raise TimeoutError(
+                                "Event Hub did not respond within 15 s — "
+                                "check connection string and network"
+                            )
 
-                    await client.receive(on_event=on_event, starting_position=position)
+                        attempt = 0  # reset backoff counter after a successful connect
+                        if _splash_shown:
+                            _dialog.show_waiting()
+                        status.status = "Connected"
+                        self.sub_title = "Live Log Monitor  |  connected"
+
+                        async def on_event(partition_ctx, event) -> None:  # type: ignore[misc]
+                            nonlocal _splash_shown
+                            if event is None or self._paused:
+                                return
+                            try:
+                                body = json.loads(event.body_as_str())
+                            except (ValueError, TypeError):
+                                return
+                            has_real = False
+                            for rec in body.get("records", []):
+                                if not self._fw_name_set:
+                                    rid: str = rec.get("resourceId", "")
+                                    if "/AZUREFIREWALLS/" in rid.upper():
+                                        self.sub_title = rid.split("/")[-1]
+                                        self._fw_name_set = True
+                                row = parse_record(rec)
+                                if row is None:
+                                    continue
+                                if "SKIP:" in row.category:
+                                    self._skip_pending += 1
+                                else:
+                                    self._pending.append(row)
+                                    has_real = True
+                            if has_real and _splash_shown:
+                                _splash_shown = False
+                                self._connecting_active = False
+                                if isinstance(self.screen, UpdateDialog):
+                                    # UpdateDialog is on top of ConnectingDialog.
+                                    # Save its state, pop both, re-push UpdateDialog.
+                                    upd_tag = self.screen._latest
+                                    upd_url = self.screen._url
+                                    self._pending_update = None
+                                    self.pop_screen()   # remove UpdateDialog
+                                    self.pop_screen()   # remove ConnectingDialog
+                                    await self.push_screen(UpdateDialog(upd_tag, upd_url))
+                                else:
+                                    self.pop_screen()   # remove ConnectingDialog
+
+                        await client.receive(on_event=on_event, starting_position=position)
+                finally:
+                    if _credential:
+                        await _credential.close()
+                        _credential = None
 
             except asyncio.CancelledError:
-                if _credential:
-                    await _credential.close()
                 if _splash_shown:
                     self._connecting_active = False
                     self.pop_screen()
@@ -347,8 +350,6 @@ class FirewallLogApp(App[None]):
                 return
 
             except Exception as exc:
-                if _credential:
-                    await _credential.close()
                 last_exc = exc
                 self._fw_name_set = False  # allow subtitle refresh on next connect
                 attempt += 1
