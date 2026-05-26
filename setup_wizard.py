@@ -2,9 +2,8 @@
 """
 Cross-platform setup wizard for fw-log-tui.
 
-Checks for Azure CLI, verifies login, and writes Event Hub credentials
-to .env (either a connection string or Entra ID namespace/hub config).
-Works on Linux, macOS, and Windows.
+Checks for Azure CLI / verifies login when needed (for subscription discovery/deploy flows)
+and writes Event Hub credentials to .env (either a connection string or Entra ID namespace/hub config).
 
 Usage (standalone):
     python setup_wizard.py [--reconfigure]
@@ -132,7 +131,7 @@ def setup_entra_id(env_file: Path) -> bool:
         break
 
     while True:
-        hub_name = input("  Event Hub name: ").strip()
+        hub_name = input("  Event Hub name (or q to go back): ").strip()
         if hub_name.lower() == "q":
             return False
         if not hub_name:
