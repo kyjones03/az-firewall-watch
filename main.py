@@ -292,6 +292,91 @@ class FirewallLogApp(App[None]):
                                 "check connection string and network"
                             )
 
+                        # Azure Event Hubs silently accepts AMQP receiver links regardless
+                        # of permissions (authorization is enforced at message delivery,
+                        # not link attach), so an SDK probe cannot detect a missing
+                        # Data Receiver role.
+                        # Instead we call the ARM Permissions API with the same credential
+                        # to check effective data-plane permissions — no Azure CLI needed.
+                        if use_entra:
+                            status.status = "Verifying data-plane access…"
+                            try:
+                                import json as _json  # noqa: PLC0415
+                                import urllib.request as _urllib_req  # noqa: PLC0415
+
+                                assert _credential is not None
+                                _arm_token = (
+                                    await _credential.get_token(
+                                        "https://management.azure.com/.default"
+                                    )
+                                ).token
+                                _arm_auth = {"Authorization": f"Bearer {_arm_token}"}
+
+                                # 1. Resolve namespace resource ID via Azure Resource Graph.
+                                _ns_short = eh_namespace.split(".")[0]
+                                _rg_req = _urllib_req.Request(
+                                    "https://management.azure.com/providers/"
+                                    "Microsoft.ResourceGraph/resources"
+                                    "?api-version=2021-03-01",
+                                    data=_json.dumps({
+                                        "query": (
+                                            "Resources"
+                                            " | where type =~ 'microsoft.eventhub/namespaces'"
+                                            f" | where name =~ '{_ns_short}'"
+                                            " | project id | limit 1"
+                                        )
+                                    }).encode(),
+                                    headers={**_arm_auth, "Content-Type": "application/json"},
+                                    method="POST",
+                                )
+                                _loop = asyncio.get_event_loop()
+                                _rg_resp = _json.loads(
+                                    await _loop.run_in_executor(
+                                        None,
+                                        lambda: _urllib_req.urlopen(_rg_req, timeout=10).read(),
+                                    )
+                                )
+                                # Resource Graph returns data as a list of objects
+                                # (not the legacy {columns, rows} format).
+                                _rg_rows = _rg_resp.get("data") or []
+
+                                if _rg_rows:
+                                    _ns_id: str = (
+                                        _rg_rows[0]["id"]
+                                        if isinstance(_rg_rows[0], dict)
+                                        else _rg_rows[0][0]
+                                    )
+                                    # 2. Check effective data-plane permissions.
+                                    _perm_req = _urllib_req.Request(
+                                        f"https://management.azure.com{_ns_id}"
+                                        "/providers/Microsoft.Authorization/permissions"
+                                        "?api-version=2022-04-01",
+                                        headers=_arm_auth,
+                                        method="GET",
+                                    )
+                                    _data_actions: list[str] = []
+                                    for _entry in _json.loads(
+                                        await _loop.run_in_executor(
+                                            None,
+                                            lambda: _urllib_req.urlopen(_perm_req, timeout=10).read(),
+                                        )
+                                    ).get("value", []):
+                                        _data_actions.extend(_entry.get("dataActions", []))
+                                    if not any(
+                                        "messages/receive" in _a
+                                        or _a in ("*", "Microsoft.EventHub/*")
+                                        for _a in _data_actions
+                                    ):
+                                        raise PermissionError(
+                                            f"Missing 'Azure Event Hubs Data Receiver' "
+                                            f"(or 'Data Owner') role on namespace '{_ns_short}'."
+                                        )
+
+                            except PermissionError:
+                                raise  # propagate → fast-fail to error dialog
+                            except Exception:
+                                pass  # ARM check unavailable — proceed optimistically
+
                         attempt = 0  # reset backoff counter after a successful connect
                         if _splash_shown:
                             _dialog.show_waiting()
@@ -352,6 +437,14 @@ class FirewallLogApp(App[None]):
             except Exception as exc:
                 last_exc = exc
                 self._fw_name_set = False  # allow subtitle refresh on next connect
+
+                # Auth / configuration errors will not fix themselves — skip retries.
+                if isinstance(exc, PermissionError) or any(
+                    kw in str(exc).lower() for kw in _AUTH_KEYWORDS
+                ):
+                    attempt = _MAX_ATTEMPTS
+                    break
+
                 attempt += 1
 
                 if attempt >= _MAX_ATTEMPTS:
@@ -369,9 +462,20 @@ class FirewallLogApp(App[None]):
         # ── all attempts exhausted ────────────────────────────────────────────
         if last_exc is not None:
             err_lower = str(last_exc).lower()
-            is_cfg_error = any(kw in err_lower for kw in _AUTH_KEYWORDS)
+            is_cfg_error = isinstance(last_exc, PermissionError) or any(
+                kw in err_lower for kw in _AUTH_KEYWORDS
+            )
             if is_cfg_error:
-                if use_entra:
+                if isinstance(last_exc, PermissionError):
+                    hint = (
+                        "Assign the role in the Azure portal (namespace → Access control (IAM))\n"
+                        "or via Azure CLI:\n"
+                        "  az role assignment create "
+                        "--assignee <your-id> "
+                        "--role 'Azure Event Hubs Data Receiver' "
+                        "--scope <namespace-resource-id>"
+                    )
+                elif use_entra:
                     hint = (
                         "Entra ID authentication was rejected.\n"
                         "Ensure your identity has the 'Azure Event Hubs Data Receiver' role\n"
